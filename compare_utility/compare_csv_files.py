@@ -7,6 +7,8 @@ from tempfile import NamedTemporaryFile
 import logging
 import time
 
+EXCEL_MAX_ROWS = 1048576  # Excel .xlsx row limit per sheet
+
 def build_key_index_and_header(csv_path, keycol):
     """Build a mapping from keycol to file offset for a CSV file, and return header."""
     index = {}
@@ -35,6 +37,19 @@ def get_row_dict_by_offset(csv_path, offset, header):
         values = line.strip().split(',')
         return dict(zip(header, values))
 
+def append_row_with_split(ws_list, row, row_counter, base_title, header):
+    """Append a row to the current worksheet, splitting to a new sheet if needed."""
+    ws, count = ws_list[-1]
+    if count >= EXCEL_MAX_ROWS:
+        # Create new sheet
+        idx = len(ws_list) + 1
+        ws_new = ws.parent.create_sheet(f"{base_title}_{idx}")
+        ws_new.append(header)
+        ws_list.append((ws_new, 1))
+        ws, count = ws_list[-1]
+    ws.append(row)
+    ws_list[-1] = (ws, count + 1)
+
 def compare_large_csv(file1, file2, output_excel, keycol='keycol'):
     start_time = time.time()
     logging.info(f"Joining key column: '{keycol}'")
@@ -48,12 +63,16 @@ def compare_large_csv(file1, file2, output_excel, keycol='keycol'):
     wb = Workbook(write_only=True)
     fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
 
+    # Create initial sheets and row counters
     ws_match = wb.create_sheet('Matching Rows')
     ws_match.append(match_columns)
+    ws_match_list = [(ws_match, 1)]  # (worksheet, row_count)
     ws_only1 = wb.create_sheet('Only in File1')
     ws_only1.append(match_columns)
+    ws_only1_list = [(ws_only1, 1)]
     ws_only2 = wb.create_sheet('Only in File2')
     ws_only2.append(match_columns)
+    ws_only2_list = [(ws_only2, 1)]
 
     # Matching keys
     step_start = time.time()
@@ -74,12 +93,12 @@ def compare_large_csv(file1, file2, output_excel, keycol='keycol'):
                 cell2.fill = fill
             styled_row1.append(cell1)
             styled_row2.append(cell2)
-        ws_match.append(styled_row1)
-        ws_match.append(styled_row2)
-        match_count += 1
-        if match_count % 1000 == 0:
-            logging.info(f"Processed {match_count} matching keys...")
-    logging.info(f"Total matching keys processed: {match_count}")
+        append_row_with_split(ws_match_list, styled_row1, match_count + 1, 'Matching Rows', match_columns)
+        append_row_with_split(ws_match_list, styled_row2, match_count + 2, 'Matching Rows', match_columns)
+        match_count += 2
+        if match_count % 2000 == 0:
+            logging.info(f"Processed {match_count//2} matching keys...")
+    logging.info(f"Total matching keys processed: {match_count//2}")
     logging.info(f"Matching keys comparison took {time.time() - step_start:.2f} seconds.")
 
     # Only in file1
@@ -88,7 +107,7 @@ def compare_large_csv(file1, file2, output_excel, keycol='keycol'):
     for key in idx1.keys() - idx2.keys():
         row1 = get_row_dict_by_offset(file1, idx1[key], header1)
         out_row = [os.path.basename(file1)] + [row1.get(col, '') for col in all_columns]
-        ws_only1.append(out_row)
+        append_row_with_split(ws_only1_list, out_row, only1_count + 1, 'Only in File1', match_columns)
         only1_count += 1
         if only1_count % 1000 == 0:
             logging.info(f"Processed {only1_count} unique keys in file1...")
@@ -101,7 +120,7 @@ def compare_large_csv(file1, file2, output_excel, keycol='keycol'):
     for key in idx2.keys() - idx1.keys():
         row2 = get_row_dict_by_offset(file2, idx2[key], header2)
         out_row = [os.path.basename(file2)] + [row2.get(col, '') for col in all_columns]
-        ws_only2.append(out_row)
+        append_row_with_split(ws_only2_list, out_row, only2_count + 1, 'Only in File2', match_columns)
         only2_count += 1
         if only2_count % 1000 == 0:
             logging.info(f"Processed {only2_count} unique keys in file2...")
