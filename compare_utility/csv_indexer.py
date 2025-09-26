@@ -1,5 +1,11 @@
+"""
+CSV indexing helpers for building key indexes and retrieving rows by offset.
+"""
+
 def build_key_index_and_header(csv_path, keycol):
-    """Build a mapping from keycol to file offset for a CSV file, and return header."""
+    """
+    Build a mapping from keycol to file offset for a CSV file, and return header.
+    """
     index = {}
     with open(csv_path, 'r', newline='', encoding='utf-8') as f:
         header_line = f.readline()
@@ -16,9 +22,11 @@ def build_key_index_and_header(csv_path, keycol):
     return index, header
 
 def get_row_dict_by_offset(csv_path, offset, header):
+    """
+    Retrieve a row as a dict from a CSV file given a file offset and header.
+    """
     with open(csv_path, 'r', newline='', encoding='utf-8') as f:
         f.seek(offset)
         line = f.readline()
         values = line.strip().split(',')
         return dict(zip(header, values))
-

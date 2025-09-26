@@ -8,11 +8,17 @@ from compare_utility.csv_indexer import build_key_index_and_header, get_row_dict
 from compare_utility.excel_writer import append_row_with_split
 
 def compare_large_csv(file1, file2, output_excel, keycol='keycol'):
+    """
+    Compare two CSV files by a key column and write the results to an Excel file.
+    Splits output into multiple sheets if row count exceeds Excel's per-sheet limit.
+    """
     start_time = time.time()
     logging.info(f"Joining key column: '{keycol}'")
     step_start = time.time()
     idx1, header1 = build_key_index_and_header(file1, keycol)
     idx2, header2 = build_key_index_and_header(file2, keycol)
+    if keycol not in header1 or keycol not in header2:
+        raise ValueError(f"Key column '{keycol}' must exist in both input files.")
     logging.info(f"Indexing and header extraction took {time.time() - step_start:.2f} seconds.")
     all_columns = [keycol] + [col for col in header1 if col != keycol] + [col for col in header2 if col != keycol and col not in header1]
     match_columns = ['SourceFile'] + all_columns
